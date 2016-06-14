@@ -155,7 +155,6 @@ void empty_used_if_full()
 		// if it's full, empty it:
 		if (spots_taken >= COLORS_LENGTH)
 		{
-			Serial.println("Used colors array is full, setting all to zero");
 			for (int i = 0; i < COLORS_LENGTH; i++)
 			{
 				used_colors[i] = 0;
@@ -176,15 +175,8 @@ void add_to_used(uint32_t color)
 			continue;
 		}
 		used_colors[i] = color;
-		Serial.print("adding new used color. array is now: ");
-		for (int i = 0; i < COLORS_LENGTH; i++)
-		{
-			Serial.println(used_colors[i]);
-		}
 		return;	
 	}
-	// TODO - I'm getting this message
-	Serial.println("ERROR: The used_colors array was full when it should not be");	
 }
 
 // Takes a pointer to a struct that is formed from the
@@ -255,10 +247,6 @@ static followling_state_t* find_followling(uint32_t follower_id, IPAddress ip)
 		udp.write((const uint8_t*) &message, sizeof(message));
 		udp.endPacket();
 		
-		Serial.print("Adding follower: ");
-		Serial.print(f->follower_id);
-		Serial.print(" at index: ");
-		Serial.print(i);
 		return f;
 	}
 	
@@ -275,23 +263,17 @@ boolean parse_follower_packet(const message_t* message, IPAddress ip)
 	// Not one of ours.
 	if (message->magic != BEACON_MAGIC && message->magic != ASSIGN_MAGIC)
 	{
-		Serial.println("unable to parse packet");
 		return false;
 	} 
 
 	if (message->magic == BEACON_MAGIC)
 	{
-		Serial.println("follower: ");
-		Serial.println(message->id);
-		
 		// First, is this a new followling? 
 		followling_state_t* f = find_followling(message->id, ip);
 	
 		// There was no space to put the new followling
 		if (!f)
 		{
-			//TODO - we're getting this message over and over
-			Serial.println("No free space in array for new followling");
 			return false;
 		}
 
@@ -303,7 +285,6 @@ boolean parse_follower_packet(const message_t* message, IPAddress ip)
 
 	if (message->magic == ASSIGN_MAGIC)
 	{
-			Serial.println("This message was an assignment, not a follower beacon");
 			return false;
 	}
 
@@ -322,27 +303,16 @@ int rescan_network()
 		return 0;
 	last_scan = now;
 
-	Serial.print("mode: ");
-	Serial.print(wifi_mode);
-	Serial.print(" scans: ");
-	Serial.println(wifi_scans++);
-
 	int min_leader = -1;
 	int num = WiFi.scanNetworks();
 	if (num < 0)
 	{
-		Serial.println("wifi scan failed?");
 		return -1;
 	}
 
 	for(int i = 0 ; i < num ; i++)
 	{
-		Serial.print(i);
-		Serial.print(' ');
 		String ssid = WiFi.SSID(i);
-		Serial.print(ssid);
-		Serial.print(' ');
-		Serial.print(WiFi.RSSI(i));
 
 		// does the SSID match our pattern?
 		if (ssid.startsWith(wifi_prefix))
@@ -350,21 +320,9 @@ int rescan_network()
 			// extract out the integer at the end
 			String idstr = ssid.substring(wifi_prefix.length());
 			int leader_id = idstr.toInt();
-			Serial.print(" leader ");
-			Serial.print(leader_id);
 			if (min_leader > leader_id || min_leader == -1)
 				min_leader = leader_id;
 		}
-
-		Serial.println();
-	}
-
-	if (min_leader < 0)
-	{
-		Serial.println("!!! No leaders found");
-	} else {
-		Serial.print("Possible leader: ");
-		Serial.println(min_leader);
 	}
 
 	return min_leader;
@@ -512,27 +470,15 @@ void leader_pattern() {
  */
 void wifi_follow(int leader_id)
 {
-	Serial.println("In wifi_follow");
 	WiFi.mode(WIFI_STA);
 	String ssid = wifi_prefix + String(leader_id);
-	Serial.print("ssid: ");
-	Serial.print(ssid);
-	Serial.println("  ");
 	int rc = WiFi.begin(ssid.c_str());
-	Serial.println("After WiFi.begin()");
 
 	if (rc == WL_CONNECTED)
 	{
 		wifi_mode = MODE_FOLLOWER;
-		Serial.print("Followed ");
-		Serial.print(ssid);
-		Serial.print(": ");
-		Serial.println(WiFi.localIP());
-	
 	} else {
 		wifi_mode = MODE_SCANNING;
-		Serial.print("ERROR FOLLOWING: ");
-		Serial.println(ssid);
 	}
 }
 
@@ -547,8 +493,6 @@ void wifi_create(int leader_id)
 	WiFi.softAP(ssid.c_str());
 	WiFi.config(ip, gw, subnet);
 	wifi_mode = MODE_CANDIDATE;
-
-	Serial.println("Candidate " + ssid + " " + WiFi.localIP());
 }
 
 
@@ -599,24 +543,13 @@ void wifi_candidate()
 	if (len)
 	{
 		IPAddress ip = udp.remoteIP();
-		Serial.print(ip);
-		Serial.print(' ');
-		Serial.print(len);
 		udp.read(buf, sizeof(buf));
-		for(int i = 0 ; i < len ; i++)
-		{
-			Serial.print(' ');
-			Serial.print(buf[i], HEX);
-		}
-
-		Serial.println();
 
 		// Parse this packet to see if it's a legit follower
 		const message_t * message = (const message_t*) buf;
 		// If we successfully took on a follower, transition to leader
 		if (parse_follower_packet(message, ip))
 		{
-			Serial.println("going to leader mode");
 			wifi_mode = MODE_LEADER;
 		}
 	}
@@ -637,7 +570,6 @@ void wifi_candidate()
 		udp.beginPacket(bcast, UDP_PORT);
 		udp.write((const uint8_t*) &message, sizeof(message));
 		udp.endPacket();
-	 	Serial.println("sent beacon");
 	}
 }
 
@@ -650,30 +582,14 @@ void wifi_follower()
 	if (len)
 	{
 		IPAddress ip = udp.remoteIP();
-		Serial.print(ip);
-		Serial.print(' ');
-		Serial.print(len);
 		udp.read(buf, sizeof(buf));
-		for(int i = 0 ; i < len ; i++)
-		{
-			Serial.print(' ');
-			Serial.print(buf[i], HEX);
-		}
-
-		Serial.println();
 
 		// parse the leader's packet
 		const message_t * message = (const message_t*) buf;
-		if (message->magic != BEACON_MAGIC && message->magic != ASSIGN_MAGIC)
-		{
-			Serial.println("unable to parse packet");
-		} else if (message->magic == ASSIGN_MAGIC) {
+		if (message->magic == ASSIGN_MAGIC) {
 			my_color = message->color;	
 		} else {
 			// assume it's a beacon
-			Serial.print("leader: ");
-			Serial.println(message->id);
-
 			// Update follower state from beacon
 			follower_state.leader_id = message->id;
 			follower_state.leader_color = message->color;
@@ -714,17 +630,7 @@ void wifi_leader()
 	if (len)
 	{
 		IPAddress ip = udp.remoteIP();
-		Serial.print(ip);
-		Serial.print(' ');
-		Serial.print(len);
 		udp.read(buf, sizeof(buf));
-		for(int i = 0 ; i < len ; i++)
-		{
-			Serial.print(' ');
-			Serial.print(buf[i], HEX);
-		}
-
-		Serial.println();
 
 		// parse the follower's packet
 		const message_t * message = (const message_t*) buf;
